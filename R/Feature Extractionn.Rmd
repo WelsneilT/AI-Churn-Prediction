@@ -1,0 +1,119 @@
+---
+install.packages("rmarkdown")
+title: "Extract"
+author: "Welsneil"
+date: "2025-03-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# Cài đặt thư viện nếu cần
+# Load thư viện
+
+# Cài đặt thư viện
+library(survival)
+library(survminer)
+library(dplyr)
+
+# Đọc dữ liệu
+df <- read.csv("D:/Downloads/Merged_Churn_Data1.csv")
+
+# Chọn các biến quan trọng và xử lý dữ liệu
+df_survival <- df %>%
+  select(tenure, churn_value, monthly_charge, total_charges, contract, cltv,  
+         internet_type, age, number_of_referrals, total_revenue, total_long_distance_charges, 
+         avg_monthly_gb_download, latitude, avg_monthly_long_distance_charges, number_of_dependents) %>%
+  mutate(
+    churn_value = as.numeric(churn_value),  # Đảm bảo churn_value là số (0 hoặc 1)
+    contract = as.factor(contract),         # Chuyển contract thành categorical
+    internet_type = as.factor(internet_type) # Chuyển internet_type thành categorical
+  ) %>%
+  na.omit()  # Loại bỏ dữ liệu thiếu
+
+# ✅ Kiểm tra dữ liệu sau xử lý
+print(str(df_survival))
+print(table(df_survival$churn_value))
+
+
+```
+
+## R Markdown
+
+```{r cars}
+# Tạo Survival Object
+# Tạo Survival Object
+surv_obj <- Surv(time = df_survival$tenure, event = df_survival$churn_value)
+
+# Chạy mô hình Cox với các biến quan trọng
+cox_model <- coxph(surv_obj ~ monthly_charge + total_charges + contract + 
+                    cltv + internet_type + age + number_of_referrals + total_revenue + 
+                    total_long_distance_charges, data = df_survival)
+
+# Hiển thị kết quả mô hình
+summary(cox_model)
+
+
+```
+```{r cars}
+
+# ✅ Dự đoán hazard_score từ mô hình Cox
+# ✅ Dự đoán hazard_score từ mô hình Cox
+base_surv <- basehaz(cox_model, centered = FALSE)
+
+# Hàm lấy baseline cumulative hazard tại một thời điểm cụ thể
+get_cumulative_hazard <- function(time_point){
+  idx <- max(which(base_surv$time <= time_point))
+  return(base_surv$hazard[idx])
+}
+
+# Tính toán hazard score (linear predictor)
+df_survival$hazard_score <- predict(cox_model, newdata = df_survival, type = "lp")
+```
+
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+df_survival <- df_survival %>%
+  rowwise() %>%
+  mutate(
+    base_hazard_6m = get_cumulative_hazard(tenure + 6),
+    base_hazard_12m = get_cumulative_hazard(tenure + 12),
+    base_hazard_24m = get_cumulative_hazard(tenure + 24),
+    predicted_survival_tenure_6m = exp(-base_hazard_6m * exp(hazard_score)),
+    predicted_survival_tenure_12m = exp(-base_hazard_12m * exp(hazard_score)),
+    predicted_survival_tenure_24m = exp(-base_hazard_24m * exp(hazard_score))
+  ) %>%
+  ungroup()
+
+# Kiểm tra kết quả
+summary(df_survival$predicted_survival_tenure_6m)
+summary(df_survival$predicted_survival_tenure_12m)
+summary(df_survival$predicted_survival_tenure_24m)
+
+```
+
+
+
+```{r cars}
+# Làm tròn giá trị dự đoán survival để hiển thị dễ nhìn
+df_survival <- df_survival %>%
+  mutate(across(starts_with("predicted_survival_tenure"), ~ round(., 4)))
+
+# Nếu có giá trị cực nhỏ thì thay thế bằng 0 để dễ nhìn
+df_survival <- df_survival %>%
+  mutate(
+    predicted_survival_tenure_6m  = ifelse(predicted_survival_tenure_6m < 0.0001, 0, predicted_survival_tenure_6m),
+    predicted_survival_tenure_12m = ifelse(predicted_survival_tenure_12m < 0.0001, 0, predicted_survival_tenure_12m),
+    predicted_survival_tenure_24m = ifelse(predicted_survival_tenure_24m < 0.0001, 0, predicted_survival_tenure_24m)
+  )
+
+# Kiểm tra lại kết quả dễ nhìn hơn
+head(df_survival[, c("hazard_score", 
+                     "predicted_survival_tenure_6m", 
+                     "predicted_survival_tenure_12m", 
+                     "predicted_survival_tenure_24m")], 10)
+
+```
