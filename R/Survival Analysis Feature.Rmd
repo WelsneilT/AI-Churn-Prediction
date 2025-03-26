@@ -1,0 +1,169 @@
+---
+title: "Survival Analysis"
+author: "Welsneil"
+date: "2025-03-17"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r }
+library(survival)
+library(survminer)
+library(dplyr)
+
+
+train_df <- read.csv("D:/Documents/IAI-UET/AI - Churn Prediction/dataset/train_survival.csv")
+test_df <- read.csv("D:/Documents/IAI-UET/AI - Churn Prediction/dataset/test_survival.csv")
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+train_df <- train_df %>%
+  mutate(
+    churn_value = as.numeric(churn_value),
+    contract = as.factor(contract),
+    internet_service = as.factor(internet_service),
+    internet_type = as.factor(internet_type)
+  ) %>% na.omit()
+
+test_df <- test_df %>%
+  mutate(
+    churn_value = as.numeric(churn_value),
+    contract = as.factor(contract),
+    internet_service = as.factor(internet_service),
+    internet_type = as.factor(internet_type)
+  ) %>% na.omit()
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+surv_obj_train <- Surv(train_df$tenure, train_df$churn_value)
+
+
+km_fit_contract <- survfit(surv_obj_train ~ contract, data=train_df)
+ggsurvplot(km_fit_contract, pval=TRUE)
+
+```   
+
+
+
+
+```{r}
+km_fit_internet_type <- survfit(surv_obj_train ~ internet_type, data=train_df)
+ggsurvplot(km_fit_internet_type, pval=TRUE, title="Survival by Internet Type")
+
+
+```
+
+
+```{r}
+km_fit_payment_method <- survfit(surv_obj_train ~ payment_method, data=train_df)
+ggsurvplot(km_fit_payment_method, pval=TRUE, title="Survival by Payment Method")
+
+```
+
+
+```{r}
+km_fit_dependents <- survfit(surv_obj_train ~ dependents, data=train_df)
+ggsurvplot(km_fit_dependents, pval=TRUE, title="Survival by Dependents")
+
+
+```
+```{r}
+
+surv_obj_train <- Surv(time = train_df$tenure, event = train_df$churn_value)
+
+
+cox_model <- coxph(Surv(tenure, churn_value) ~ contract + number_of_referrals + number_of_dependents +
+                     monthly_charges + New_avg_service_fee + dependents + age + latitude + city +
+                     internet_type + New_family_size_2 + total_charges + total_population +
+                     payment_method + longitude + zip_code + New_family_size_3 + 
+                     New_contract_type_2 + avg_monthly_gb_download + senior_citizen,
+                     # total_long_distance_charges + avg_monthly_long_distance_charges + offer + paperless_billing + partner,
+                   data = train_df)
+
+summary(cox_model)
+
+```
+
+
+```{r}
+base_surv <- basehaz(cox_model, centered = FALSE)
+
+
+get_cumulative_hazard <- function(time_point){
+  idx <- max(which(base_surv$time <= time_point))
+  return(base_surv$hazard[idx])
+}
+
+
+
+```
+
+```{r}
+get_survival_probability <- function(tenure, hazard_score, base_surv, time_points) {
+  
+  cumulative_hazard <- sapply(time_points, function(t) get_cumulative_hazard(t + tenure))
+  
+  
+  survival_probabilities <- exp(-cumulative_hazard)
+  
+  return(survival_probabilities)
+}
+```
+
+```{r}
+train_survival_features <- train_df %>%
+  mutate(
+    hazard_score = predict(cox_model, newdata = train_df, type = "lp"),
+    baseline_hazard = sapply(tenure, get_cumulative_hazard),
+    hazard_group = cut(hazard_score, 
+                       breaks=quantile(hazard_score, probs=seq(0, 1, 0.25)),
+                       labels=c("Low", "Medium-Low", "Medium-High", "High"), 
+                       include.lowest=TRUE),
+
+    survival_prob_3m = sapply(tenure, function(t) get_survival_probability(t, hazard_score, base_surv, 3)),
+    survival_prob_6m = sapply(tenure, function(t) get_survival_probability(t, hazard_score, base_surv, 6)),
+    survival_prob_12m = sapply(tenure, function(t) get_survival_probability(t, hazard_score, base_surv, 12))
+  ) %>%
+  select(hazard_score, baseline_hazard, hazard_group, survival_prob_3m, survival_prob_6m, survival_prob_12m)
+
+# TEST survival features
+test_survival_features <- test_df %>%
+  mutate(
+    hazard_score = predict(cox_model, newdata = test_df, type = "lp"),
+    baseline_hazard = sapply(tenure, get_cumulative_hazard),
+    hazard_group = cut(hazard_score, 
+                       breaks=quantile(train_survival_features$hazard_score, probs=seq(0, 1, 0.25)),
+                       labels=c("Low", "Medium-Low", "Medium-High", "High"), 
+                       include.lowest=TRUE),
+    survival_prob_3m = sapply(tenure, function(t) get_survival_probability(t, hazard_score, base_surv, 3)),
+    survival_prob_6m = sapply(tenure, function(t) get_survival_probability(t, hazard_score, base_surv, 6)),
+    survival_prob_12m = sapply(tenure, function(t) get_survival_probability(t, hazard_score, base_surv, 12))
+  ) %>%
+  select(hazard_score, baseline_hazard, hazard_group, survival_prob_3m, survival_prob_6m, survival_prob_12m)
+
+```
+
+
+```{r}
+write.csv(train_survival_features, "survival_features_train.csv", row.names = FALSE)
+write.csv(test_survival_features, "survival_features_test.csv", row.names = FALSE)
+
+```
+```{r}
+write.csv(train_survival_features, "survival_features_train.csv", row.names = FALSE)
+write.csv(test_survival_features, "survival_features_test.csv", row.names = FALSE)
+
+```
+
+
+
