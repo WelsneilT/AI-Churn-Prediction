@@ -1,0 +1,107 @@
+{% extends "churn_app/base.html" %}
+{% load static %} {# Ensure static is loaded if needed here, though base handles main css #}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2" style="color: white; font: bold">{{ page_title|default:"Online Churn Prediction" }}</h1>
+</div>
+
+<p class="lead">Enter the customer details below to predict churn probability.</p>
+
+{# Display general errors first #}
+{% if error %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        {{ error }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+{% endif %}
+
+<div class="card shadow-sm form-container-card">
+    <div class="card-header">
+        Input Customer Data
+    </div>
+    <div class="card-body">
+        {# novalidate uses Django's validation #}
+        <form method="post" novalidate>
+            {% csrf_token %}
+
+            {# Display non-field errors (errors not specific to one input) #}
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">
+                    {{ form.non_field_errors }}
+                </div>
+            {% endif %}
+
+            {# Render form fields using Bootstrap layout #}
+            <div class="row g-3"> {# g-3 adds gutters between columns #}
+                {% for field in form %}
+                    <div class="col-md-6"> {# Two columns on medium screens and up #}
+                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+
+                        {# Add Bootstrap classes based on widget type #}
+                        {% if field.field.widget.input_type == 'select' %}
+                            <select name="{{ field.name }}" id="{{ field.id_for_label }}" class="form-select {% if field.errors %}is-invalid{% endif %}">
+                                {% for value, text in field.field.choices %}
+                                    {# Handle comparison carefully for selected state #}
+                                    <option value="{{ value }}" {% if field.value|stringformat:"s" == value|stringformat:"s" %}selected{% endif %}>{{ text }}</option>
+                                {% endfor %}
+                            </select>
+                        {% elif field.field.widget.input_type == 'checkbox' %}
+                            {# Checkboxes might need different layout depending on label #}
+                            <div class="form-check mt-2"> {# Add margin for alignment #}
+                                <input type="checkbox" name="{{ field.name }}" id="{{ field.id_for_label }}" class="form-check-input {% if field.errors %}is-invalid{% endif %}" {% if field.value %}checked{% endif %}>
+                                {# Label usually comes after checkbox input #}
+                                {# <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label> #}
+                                {% if field.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {{ field.errors|striptags }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            {# Default input type (text, number, etc.) #}
+                            <input type="{{ field.field.widget.input_type }}" name="{{ field.name }}" id="{{ field.id_for_label }}" value="{{ field.value|default:'' }}" class="form-control {% if field.errors %}is-invalid{% endif %}" {% if field.field.required %}required{% endif %}>
+                        {% endif %}
+
+                        {# Display field-specific errors #}
+                        {% if field.errors %}
+                            <div class="invalid-feedback d-block"> {# Use d-block to show it #}
+                                {{ field.errors|striptags }}
+                            </div>
+                        {% endif %}
+
+                        {# Display help text #}
+                        {% if field.help_text %}
+                            <div class="form-text">{{ field.help_text }}</div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div> {# End row #}
+
+            <div class="mt-4"> {# Add margin top before button #}
+                <button type="submit" class="btn btn-primary btn-lg">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-search me-1" viewBox="0 0 16 16"> <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/> </svg>
+                     Predict Churn
+                </button>
+            </div>
+        </form>
+    </div> {# End card-body #}
+</div> {# End card #}
+
+
+{# --- Display Prediction Result --- #}
+{% if prediction_result is not None %} {# Check if result exists #}
+    <div class="card mt-4 shadow-sm">
+         <div class="card-header">
+            Prediction Result
+        </div>
+        <div class="card-body">
+            {# Use the classes defined in style.css #}
+            <div class="prediction-result {% if prediction_value == 1 %}churn{% else %}no-churn{% endif %}">
+                {{ prediction_result }}
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+{% endblock %}
