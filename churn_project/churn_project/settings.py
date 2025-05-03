@@ -131,7 +131,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+    'crispy_forms',
+    'crispy_bootstrap5',
+    'django.contrib.humanize',
     # Thêm app churn_app vào đây
     'churn_app',
  
@@ -152,3 +154,6 @@ TEMPLATES = [
         },
     },
 ]
+
+CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5" # Chỉ định template pack được phép
+CRISPY_TEMPLATE_PACK = "bootstrap5"  

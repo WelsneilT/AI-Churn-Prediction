@@ -1,0 +1,485 @@
+{% extends "churn_app/base.html" %}
+{% load static %}
+{% load humanize %} {# Requires 'django.contrib.humanize' in INSTALLED_APPS #}
+
+{% block content %}
+
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    {# Use theme's default color for heading #}
+    <h1 class="h2">{{ page_title|default:"Dashboard" }}</h1>
+    {# Optional: Add refresh button or date range here #}
+    {# <button class="btn btn-sm btn-outline-secondary">Refresh</button> #}
+</div>
+
+{# --- Error Handling --- #}
+{% if error %}
+    <div class="alert alert-danger" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i> Error loading dashboard data: {{ error }}
+    </div>
+{% else %}
+
+    {# --- Row 1: KPIs --- #}
+    <div class="row g-3 mb-3"> {# Added gutters (g-3) and bottom margin (mb-3) #}
+
+        {# KPI: Total Customers #}
+        <div class="col-md-6 col-xl-3">
+            <div class="card shadow-sm h-100"> {# Added shadow and h-100 for equal height #}
+                <div class="card-body d-flex flex-column"> {# Use flex for content alignment #}
+                    <div class="row align-items-center mb-2">
+                        <div class="col-auto"> {# Use col-auto for icon #}
+                            <div class="avatar-sm bg-primary text-white rounded d-flex align-items-center justify-content-center">
+                                <i class="bi bi-people-fill fs-4"></i> {# Bootstrap Icon #}
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="text-end">
+                                <h3 class="my-1">{{ kpi_data.total_customers|default:"0"|intcomma }}</h3>
+                                <p class="text-muted mb-0 text-truncate">Total Customers</p>
+                            </div>
+                        </div>
+                    </div>
+                    {# Optional: Simplified visual element instead of progress bar #}
+                    <div class="mt-auto pt-2">
+                         <div style="height: 4px; background-color: var(--bs-primary); border-radius: 2px;"></div>
+                    </div>
+                </div>
+            </div> <!-- end card-->
+        </div> <!-- end col -->
+
+        {# KPI: Churn Rate #}
+        <div class="col-md-6 col-xl-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body d-flex flex-column">
+                    <div class="row align-items-center mb-2">
+                        <div class="col-auto">
+                            <div class="avatar-sm bg-danger text-white rounded d-flex align-items-center justify-content-center">
+                                <i class="bi bi-graph-down-arrow fs-4"></i>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="text-end">
+                                <h3 class="my-1">{{ kpi_data.churn_rate|default:"0"|floatformat:1 }}%</h3>
+                                <p class="text-muted mb-0 text-truncate">Churn Rate</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-auto pt-2">
+                        <h6 class="text-uppercase fs-sm text-muted">
+                            <small>Overall</small>
+                            <span class="float-end">{{ kpi_data.churned_customers|default:"0"|intcomma }} Churned</span>
+                        </h6>
+                         <div class="progress progress-sm m-0" style="height: 4px;">
+                             {# Corrected style attribute syntax #}
+                             <div class="progress-bar bg-danger" role="progressbar" aria-valuenow="{{ kpi_data.churn_rate|default:'0'|floatformat:0 }}" aria-valuemin="0" aria-valuemax="100">
+                                 <span class="visually-hidden">{{ kpi_data.churn_rate|default:"0"|floatformat:1 }}%</span>
+                             </div>
+                         </div>
+                     </div>
+                </div>
+            </div> <!-- end card-->
+        </div> <!-- end col -->
+
+        {# KPI: Total Revenue #}
+        <div class="col-md-6 col-xl-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body d-flex flex-column">
+                    <div class="row align-items-center mb-2">
+                        <div class="col-auto">
+                            <div class="avatar-sm bg-success text-white rounded d-flex align-items-center justify-content-center">
+                                <i class="bi bi-currency-dollar fs-4"></i>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="text-end">
+                                <h3 class="my-1">${{ kpi_data.total_revenue|default:"0"|floatformat:0|intcomma }}</h3>
+                                <p class="text-muted mb-0 text-truncate">Total Revenue</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-auto pt-2">
+                         <div style="height: 4px; background-color: var(--bs-success); border-radius: 2px;"></div>
+                    </div>
+                </div>
+            </div> <!-- end card-->
+        </div> <!-- end col -->
+
+        {# KPI: Avg. Tenure #}
+        <div class="col-md-6 col-xl-3">
+            <div class="card shadow-sm h-100">
+                <div class="card-body d-flex flex-column">
+                    <div class="row align-items-center mb-2">
+                        <div class="col-auto">
+                            <div class="avatar-sm bg-info text-white rounded d-flex align-items-center justify-content-center">
+                                <i class="bi bi-clock-history fs-4"></i>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="text-end">
+                                <h3 class="my-1">{{ kpi_data.avg_tenure|default:"0"|floatformat:1 }}</h3>
+                                <p class="text-muted mb-0 text-truncate">Avg. Tenure (Months)</p>
+                            </div>
+                        </div>
+                    </div>
+                     <div class="mt-auto pt-2">
+                          <div style="height: 4px; background-color: var(--bs-info); border-radius: 2px;"></div>
+                     </div>
+                </div>
+            </div> <!-- end card-->
+        </div> <!-- end col -->
+
+    </div>
+    <!-- end KPI row -->
+
+
+    {# --- Row 2: Charts --- #}
+    <div class="row g-3 mb-3">
+
+        {# Chart 1: Churn Distribution (Pie) #}
+        <div class="col-xl-4 col-lg-6">
+             <div class="card shadow-sm h-100">
+                 <div class="card-header">
+                     <h4 class="card-title mb-0">Customer Status</h4>
+                 </div>
+                 <div class="card-body d-flex align-items-center justify-content-center"> {# Center chart #}
+                     {% if churn_pie_data %}
+                        <div id="churn-pie-chart" class="apex-charts w-100" data-colors="#0acf97,#fa5c7c"></div> {# Green Stayed, Red Churned #}
+                     {% else %}
+                         <p class="text-muted mb-0">Churn status data not available.</p>
+                     {% endif %}
+                 </div> <!-- end card-body-->
+             </div> <!-- end card-->
+         </div> <!-- end col-->
+
+        {# Chart 2: Avg Tenure Churned vs Stayed (Bar) #}
+        <div class="col-xl-4 col-lg-6">
+            <div class="card shadow-sm h-100">
+                 <div class="card-header">
+                     <h4 class="card-title mb-0">Average Tenure by Status</h4>
+                 </div>
+                <div class="card-body">
+                     {% if tenure_churn_data %}
+                         <div id="tenure-churn-chart" class="apex-charts" data-colors="#39afd1"></div> {# Info color #}
+                     {% else %}
+                         <p class="text-muted mb-0">Tenure data not available.</p>
+                     {% endif %}
+                </div> <!-- end card-body-->
+            </div> <!-- end card-->
+        </div> <!-- end col-->
+
+        {# Chart 3: Churn by Contract Type (Bar) #}
+        <div class="col-xl-4 col-lg-12"> {# Allow this to take full width on large if others wrap #}
+            <div class="card shadow-sm h-100">
+                 <div class="card-header">
+                     <h4 class="card-title mb-0">Churn by Contract Type</h4>
+                 </div>
+                <div class="card-body">
+                     {% if contract_churn_data %}
+                         <div id="contract-churn-chart" class="apex-charts" data-colors="#0acf97,#fa5c7c"></div> {# Green Stayed, Red Churned #}
+                     {% else %}
+                          <p class="text-muted mb-0">Contract data not available or missing 'contract' column.</p>
+                     {% endif %}
+                 </div> <!-- end card-body-->
+            </div> <!-- end card-->
+        </div> <!-- end col-->
+
+    </div>
+    <!-- end Charts row -->
+
+    {# --- Row 3: Table - Churn Reasons --- #}
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                 <div class="card-header">
+                     <h4 class="card-title mb-0">Top Churn Reasons</h4>
+                 </div>
+                <div class="card-body">
+                    {% if reason_table_data %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-centered table-nowrap mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Churn Reason</th>
+                                    <th class="text-end">Count</th>
+                                    <th class="text-end">Percentage of Churned</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {# Loop directly through the data #}
+                                {% for item in reason_table_data %}
+                                <tr>
+                                    <td>{{ item.reason }}</td>
+                                    <td class="text-end">{{ item.count|intcomma }}</td>
+                                    <td class="text-end">
+                                        {# Directly display the pre-calculated percentage #}
+                                        {# Apply floatformat here for display #}
+                                        {{ item.percentage|floatformat:1 }}%
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">No specific churn reasons found in the data.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div> <!-- end table-responsive-->
+                {% elif reason_table_data is not None and reason_table_data|length == 0 %}
+                    <p class="text-muted mb-0">No specific churn reasons found or 'churn_reason' column missing/empty.</p>
+                {% else %}
+                    <p class="text-muted mb-0">Churn reason data not available.</p>
+                {% endif %}
+                </div> <!-- end card-body -->
+            </div> <!-- end card-->
+        </div> <!-- end col -->
+    </div>
+    <!-- end Table row -->
+
+{% endif %} {# End of check for main error #}
+
+{% endblock %}
+
+
+{% block extra_js %}
+{# Ensure ApexCharts is loaded (CDN or static) #}
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+{# Optional: CounterUp JS if you want animated numbers - requires jQuery & Waypoints #}
+{# Make sure these are loaded in base.html or uncomment here if needed #}
+{# <script src="path/to/jquery.min.js"></script> #}
+{# <script src="path/to/jquery.waypoints.min.js"></script> #}
+{# <script src="path/to/jquery.counterup.min.js"></script> #}
+{# <script> $(document).ready(function() { $('[data-plugin="counterup"]').counterUp(); });</script> #}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+
+    // Helper to safely parse JSON from Django context
+    function safeJsonParse(jsonString, defaultValue = null) {
+        try {
+            // Handle potential None or empty strings passed from Django before parsing
+            if (jsonString === null || jsonString === undefined || jsonString.trim() === '' || jsonString.toLowerCase() === 'none') {
+                return defaultValue;
+            }
+            return JSON.parse(jsonString);
+        } catch (e) {
+            console.error("Failed to parse JSON:", e, "Input string:", jsonString);
+            return defaultValue;
+        }
+    }
+
+    // Helper function to get colors from element attribute or provide defaults
+    function getChartColors(chartId, defaultColors) {
+        var chartElement = document.querySelector("#" + chartId);
+        // Check if element exists and has the data-colors attribute
+        if (chartElement && chartElement.dataset.colors) {
+            // Split the colors string into an array
+            return chartElement.dataset.colors.split(",");
+        }
+        // Return default colors if no attribute is found or element doesn't exist
+        return defaultColors;
+    }
+
+    // --- Chart 1: Churn Pie Chart ---
+    const churnPieRawData = '{{ churn_pie_data|escapejs|default:"null" }}'; // Use escapejs for safety
+    const churnPieData = safeJsonParse(churnPieRawData, {}); // Default to empty object
+
+    if (churnPieData && Array.isArray(churnPieData.series) && Array.isArray(churnPieData.labels) && churnPieData.series.length > 0) {
+        const optionsPie = {
+            chart: {
+                type: 'donut', // Using donut for a slightly modern look like Ubold
+                height: 320,
+                foreColor: '#adb5bd' // Default text color for dark theme
+            },
+            series: churnPieData.series,
+            labels: churnPieData.labels,
+            colors: getChartColors("churn-pie-chart", ['#0acf97', '#fa5c7c']), // Green (Stayed), Red (Churned)
+            legend: {
+                show: true,
+                position: 'bottom',
+                horizontalAlign: 'center',
+                markers: { width: 10, height: 10 },
+                itemMargin: { horizontal: 10, vertical: 5 },
+                labels: { colors: '#adb5bd' } // Legend text color
+            },
+            dataLabels: { // Optional: Show percentage on slices
+                 enabled: true,
+                 formatter: function (val, opts) {
+                     // Display the percentage value
+                     return opts.w.globals.seriesTotals[opts.seriesIndex] + ' (' + val.toFixed(1) + '%)'
+                 },
+                 style: {
+                     fontSize: '12px',
+                     colors: ['#fff'] // White text on slices
+                 },
+                 dropShadow: { // Add shadow for better readability
+                    enabled: true,
+                    top: 1,
+                    left: 1,
+                    blur: 1,
+                    color: '#000',
+                    opacity: 0.45
+                 }
+            },
+            responsive: [{
+                breakpoint: 768, // Adjust breakpoint if needed
+                options: {
+                    chart: { height: 280 },
+                    legend: { position: 'bottom' }
+                }
+            }, {
+                 breakpoint: 480,
+                 options: {
+                    chart: { height: 240 },
+                    legend: { show: false } // Hide legend on very small screens
+                 }
+            }],
+            tooltip: {
+                 y: { formatter: (val) => val + " Customers" },
+                 theme: 'dark'
+            },
+            theme: { mode: 'dark' },
+            stroke: { // Border between slices
+                show: true,
+                width: 2,
+                colors: ['#343a40'] // Match dark background
+            }
+        };
+        try {
+            const chartPie = new ApexCharts(document.querySelector("#churn-pie-chart"), optionsPie);
+            chartPie.render();
+        } catch (e) {
+            console.error("Error rendering Pie Chart:", e);
+            document.querySelector("#churn-pie-chart").innerHTML = '<p class="text-danger text-center small">Could not render chart.</p>';
+        }
+    } else {
+         console.warn("Pie chart data is missing or invalid.");
+         // Optionally display a message in the chart container
+         const pieContainer = document.querySelector("#churn-pie-chart");
+         if(pieContainer) pieContainer.innerHTML = '<p class="text-muted text-center small">Data unavailable</p>';
+    }
+
+
+    // --- Chart 2: Tenure Bar Chart ---
+    const tenureChurnRawData = '{{ tenure_churn_data|escapejs|default:"null" }}';
+    const tenureData = safeJsonParse(tenureChurnRawData, {});
+
+    if (tenureData && Array.isArray(tenureData.series) && Array.isArray(tenureData.categories) && tenureData.series.length > 0) {
+         const optionsTenureBar = {
+             chart: {
+                 type: 'bar',
+                 height: 350,
+                 toolbar: { show: false },
+                 foreColor: '#adb5bd'
+             },
+             plotOptions: {
+                 bar: {
+                     horizontal: false,
+                     columnWidth: '45%',
+                     borderRadius: 4 // Slightly rounded bars
+                 }
+             },
+             dataLabels: { enabled: false },
+             series: tenureData.series,
+             xaxis: {
+                 categories: tenureData.categories,
+                 axisBorder: { show: false },
+                 axisTicks: { show: false },
+                 labels: { style: { colors: '#adb5bd'} }
+             },
+             yaxis: {
+                 title: { text: 'Avg. Tenure (Months)', style: { color: '#adb5bd', fontWeight: 400 } },
+                 labels: { style: { colors: '#adb5bd'} }
+             },
+             colors: getChartColors("tenure-churn-chart", ['#39afd1']), // Info color
+             grid: {
+                 borderColor: '#444c54', // Slightly adjusted dark grid color
+                 strokeDashArray: 4,
+                 xaxis: { lines: { show: false } },
+                 yaxis: { lines: { show: true } }
+             },
+             tooltip: {
+                 y: { formatter: (val) => val + " months" },
+                 theme: 'dark'
+             },
+             theme: { mode: 'dark' }
+         };
+         try {
+            const chartTenureBar = new ApexCharts(document.querySelector("#tenure-churn-chart"), optionsTenureBar);
+            chartTenureBar.render();
+         } catch (e) {
+            console.error("Error rendering Tenure Chart:", e);
+            document.querySelector("#tenure-churn-chart").innerHTML = '<p class="text-danger text-center small">Could not render chart.</p>';
+         }
+     } else {
+         console.warn("Tenure chart data is missing or invalid.");
+         const tenureContainer = document.querySelector("#tenure-churn-chart");
+         if(tenureContainer) tenureContainer.innerHTML = '<p class="text-muted text-center small">Data unavailable</p>';
+     }
+
+
+    // --- Chart 3: Contract Bar Chart ---
+    const contractChurnRawData = '{{ contract_churn_data|escapejs|default:"null" }}';
+    const contractData = safeJsonParse(contractChurnRawData, {});
+
+    if (contractData && Array.isArray(contractData.series) && Array.isArray(contractData.categories) && contractData.series.length > 0) {
+        const optionsContractBar = {
+            chart: {
+                type: 'bar',
+                height: 350,
+                stacked: true, // Stack Stayed and Churned
+                toolbar: { show: false },
+                foreColor: '#adb5bd'
+            },
+            plotOptions: {
+                bar: {
+                    horizontal: false,
+                    columnWidth: '60%', // Adjust width if needed
+                    borderRadius: 4
+                },
+            },
+            dataLabels: { enabled: false },
+            series: contractData.series,
+            xaxis: {
+                categories: contractData.categories,
+                axisBorder: { show: false },
+                axisTicks: { show: false },
+                 labels: { style: { colors: '#adb5bd'} }
+            },
+            yaxis: {
+                title: { text: 'Number of Customers', style: { color: '#adb5bd', fontWeight: 400 } },
+                 labels: { style: { colors: '#adb5bd'} }
+            },
+            colors: getChartColors("contract-churn-chart", ['#0acf97', '#fa5c7c']), // Green (Stayed), Red (Churned)
+            legend: {
+                position: 'top',
+                horizontalAlign: 'center',
+                 labels: { colors: '#adb5bd' } // Legend text color
+            },
+            grid: {
+                borderColor: '#444c54',
+                strokeDashArray: 4,
+                xaxis: { lines: { show: false } },
+                yaxis: { lines: { show: true } }
+            },
+             tooltip: {
+                 y: { formatter: (val) => val + " customers" },
+                 theme: 'dark'
+             },
+             theme: { mode: 'dark' }
+        };
+        try {
+            const chartContractBar = new ApexCharts(document.querySelector("#contract-churn-chart"), optionsContractBar);
+            chartContractBar.render();
+        } catch (e) {
+            console.error("Error rendering Contract Chart:", e);
+            document.querySelector("#contract-churn-chart").innerHTML = '<p class="text-danger text-center small">Could not render chart.</p>';
+        }
+    } else {
+         console.warn("Contract chart data is missing or invalid.");
+         const contractContainer = document.querySelector("#contract-churn-chart");
+         if(contractContainer) contractContainer.innerHTML = '<p class="text-muted text-center small">Data unavailable</p>';
+    }
+
+}); // End DOMContentLoaded
+</script>
+{% endblock %}

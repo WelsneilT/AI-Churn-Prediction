@@ -9,6 +9,8 @@ from django.conf import settings
 from sklearn.preprocessing import StandardScaler, RobustScaler, LabelEncoder
 from .forms import UploadFileForm, OnlinePredictionForm
 import warnings
+import traceback
+import json
 
 # Suppress specific warnings if needed, e.g., FutureWarning from older sklearn/pandas interactions
 # warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -430,3 +432,116 @@ def predict_batch(request):
         context['form'] = form
     else: context['form'] = UploadFileForm()
     return render(request, 'churn_app/prediction_batch.html', context)
+
+def dashboard_view(request):
+    context = {
+        'page_title': 'Churn Dashboard',
+        'prediction_mode': 'dashboard',
+        'kpi_data': {},
+        'churn_pie_data': None,
+        'tenure_churn_data': None,
+        'contract_churn_data': None,
+        'reason_table_data': None, # Will be a list of dicts
+        'error': None,
+    }
+
+    try:
+        # --- Data Loading (same as before) ---
+        # parent_dir = os.path.dirname(settings.BASE_DIR)
+        # csv_path = os.path.join(parent_dir, 'dataset', 'Merged_Churn_Dataset.csv')
+        csv_path = r"D:\Documents\IAI-UET\AI - Churn Prediction\dataset\Merged_Churn_Dataset.csv"
+        if not os.path.exists(csv_path):
+             raise FileNotFoundError(f"Data file not found at {csv_path}")
+        df = pd.read_csv(csv_path)
+
+        # --- Data Prep (same as before) ---
+        if 'churn_label' in df.columns:
+             df['churn_value'] = df['churn_label'].apply(lambda x: 1 if x == 'Yes' else 0)
+        elif 'customer_status' in df.columns:
+             df['churn_value'] = df['customer_status'].apply(lambda x: 1 if x == 'Churned' else 0)
+        else:
+             df['churn_value'] = pd.to_numeric(df['churn_value'], errors='coerce').fillna(0).astype(int)
+
+        if 'total_revenue' not in df.columns and 'total_charges' in df.columns:
+             df['total_revenue'] = pd.to_numeric(df['total_charges'], errors='coerce').fillna(0)
+        elif 'total_revenue' in df.columns:
+              df['total_revenue'] = pd.to_numeric(df['total_revenue'], errors='coerce').fillna(0)
+        else:
+             df['total_revenue'] = 0
+
+        df['tenure'] = pd.to_numeric(df['tenure'], errors='coerce').fillna(0)
+
+        # --- KPI Calculations (same as before) ---
+        total_customers = len(df)
+        churned_customers = int(df['churn_value'].sum())
+        stayed_customers = total_customers - churned_customers
+        churn_rate = (churned_customers / total_customers * 100) if total_customers > 0 else 0
+        avg_tenure = df['tenure'].mean() if total_customers > 0 else 0
+        total_revenue = df['total_revenue'].sum()
+
+        context['kpi_data'] = {
+            'total_customers': total_customers,
+            'churn_rate': churn_rate,
+            'avg_tenure': avg_tenure,
+            'total_revenue': total_revenue,
+            'churned_customers': churned_customers # Keep this, needed below
+        }
+
+        # --- Chart Data Preparation (same as before) ---
+        # 1. Churn vs. Stayed (Pie Chart)
+        churn_pie_series = [stayed_customers, churned_customers]
+        churn_pie_labels = ['Stayed', 'Churned']
+        context['churn_pie_data'] = json.dumps({'series': churn_pie_series, 'labels': churn_pie_labels})
+
+        # 2. Average Tenure (Bar Chart)
+        avg_tenure_stayed = df[df['churn_value'] == 0]['tenure'].mean() if stayed_customers > 0 else 0
+        avg_tenure_churned = df[df['churn_value'] == 1]['tenure'].mean() if churned_customers > 0 else 0
+        tenure_churn_series = [{'name': 'Average Tenure (Months)', 'data': [round(avg_tenure_stayed, 1), round(avg_tenure_churned, 1)]}]
+        tenure_churn_categories = ['Stayed', 'Churned']
+        context['tenure_churn_data'] = json.dumps({'series': tenure_churn_series, 'categories': tenure_churn_categories})
+
+        # 3. Churn by Contract Type (Bar Chart)
+        if 'contract' in df.columns:
+            contract_churn = df.groupby(['contract', 'churn_value']).size().unstack(fill_value=0)
+            contract_churn.columns = ['Stayed', 'Churned']
+            contract_churn_categories = contract_churn.index.tolist()
+            contract_churn_series = [
+                {'name': 'Stayed', 'data': contract_churn['Stayed'].tolist()},
+                {'name': 'Churned', 'data': contract_churn['Churned'].tolist()}
+            ]
+            context['contract_churn_data'] = json.dumps({'series': contract_churn_series, 'categories': contract_churn_categories})
+        else:
+            context['contract_churn_data'] = None
+
+        # --- Churn Reason Breakdown (Table Data) ---
+        # **** MODIFICATION START ****
+        reason_list = [] # Initialize empty list
+        if 'churn_reason' in df.columns and churned_customers > 0: # Check if column exists AND there are churned customers
+             reason_counts = df[df['churn_value'] == 1]['churn_reason'].fillna('Unknown').astype(str)
+             reason_counts = reason_counts[~reason_counts.str.contains("Not Applicable", na=False, case=False)]
+             reason_counts = reason_counts.value_counts().reset_index()
+             reason_counts.columns = ['reason', 'count']
+
+             # Calculate percentage for each reason and add it to the dictionary
+             for record in reason_counts.to_dict('records'):
+                 record['percentage'] = (record['count'] * 100.0) / churned_customers
+                 reason_list.append(record)
+
+        elif 'churn_reason' not in df.columns:
+             print("Warning: 'churn_reason' column not found in data.") # Optional: Log a warning
+             # reason_list remains empty
+
+        context['reason_table_data'] = reason_list # Assign the processed list
+        # **** MODIFICATION END ****
+
+
+    except FileNotFoundError as e:
+        context['error'] = str(e)
+    except KeyError as e:
+        context['error'] = f"Missing expected column in CSV: {e}. Please check your data file."
+        print(traceback.format_exc()) # Print traceback for key errors
+    except Exception as e:
+        context['error'] = f"An error occurred: {str(e)}"
+        print(traceback.format_exc()) # Print full traceback for debugging
+
+    return render(request, 'churn_app/dashboard.html', context)
