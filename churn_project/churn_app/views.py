@@ -433,115 +433,173 @@ def predict_batch(request):
     else: context['form'] = UploadFileForm()
     return render(request, 'churn_app/prediction_batch.html', context)
 
+# --- dashboard_view ---
 def dashboard_view(request):
+    """
+    Generates data for and renders the main churn dashboard.
+    """
     context = {
         'page_title': 'Churn Dashboard',
-        'prediction_mode': 'dashboard',
+        'prediction_mode': 'dashboard', # For sidebar active state
         'kpi_data': {},
         'churn_pie_data': None,
         'tenure_churn_data': None,
         'contract_churn_data': None,
-        'reason_table_data': None, # Will be a list of dicts
+        'reason_table_data': None,
+        'tenure_group_churn_data': None,
+        'monthly_charges_hist_data': None,
+        'internet_type_churn_data': None,
         'error': None,
     }
 
     try:
-        # --- Data Loading (same as before) ---
-        # parent_dir = os.path.dirname(settings.BASE_DIR)
-        # csv_path = os.path.join(parent_dir, 'dataset', 'Merged_Churn_Dataset.csv')
+        # --- Data Loading ---
         csv_path = r"D:\Documents\IAI-UET\AI - Churn Prediction\dataset\Merged_Churn_Dataset.csv"
+        print(f"DEBUG: Attempting to load data from: {csv_path}")
         if not os.path.exists(csv_path):
-             raise FileNotFoundError(f"Data file not found at {csv_path}")
+             raise FileNotFoundError(f"Data file not found at the specified path: {csv_path}")
         df = pd.read_csv(csv_path)
+        print(f"DEBUG: Data loaded successfully. Shape: {df.shape}")
 
-        # --- Data Prep (same as before) ---
-        if 'churn_label' in df.columns:
-             df['churn_value'] = df['churn_label'].apply(lambda x: 1 if x == 'Yes' else 0)
-        elif 'customer_status' in df.columns:
-             df['churn_value'] = df['customer_status'].apply(lambda x: 1 if x == 'Churned' else 0)
-        else:
-             df['churn_value'] = pd.to_numeric(df['churn_value'], errors='coerce').fillna(0).astype(int)
+        # --- Data Preparation & Cleaning ---
+        print("DEBUG: Starting data preparation...")
+        # Churn Value
+        if 'churn_label' in df.columns: df['churn_value'] = df['churn_label'].apply(lambda x: 1 if str(x).strip().lower() == 'yes' else 0)
+        elif 'customer_status' in df.columns: df['churn_value'] = df['customer_status'].apply(lambda x: 1 if str(x).strip().lower() == 'churned' else 0)
+        else: df['churn_value'] = pd.to_numeric(df.get('churn_value', 0), errors='coerce').fillna(0).astype(int)
+        print(f"DEBUG: Churn value distribution:\n{df['churn_value'].value_counts()}")
+        # Total Revenue
+        if 'total_revenue' not in df.columns and 'total_charges' in df.columns: df['total_revenue'] = pd.to_numeric(df['total_charges'], errors='coerce').fillna(0)
+        elif 'total_revenue' in df.columns: df['total_revenue'] = pd.to_numeric(df['total_revenue'], errors='coerce').fillna(0)
+        else: df['total_revenue'] = 0
+        # Tenure
+        df['tenure'] = pd.to_numeric(df.get('tenure', 0), errors='coerce').fillna(0)
+        # Monthly Charges
+        df['monthly_charges'] = pd.to_numeric(df.get('monthly_charges', 0), errors='coerce').fillna(0)
+        # Internet Type & Service
+        df['internet_service'] = df.get('internet_service', 'No').fillna('No').astype(str)
+        df['internet_type'] = df.get('internet_type', 'Unknown').fillna('Unknown').astype(str)
+        # Create a more consolidated internet category column
+        df['internet_category'] = df.apply(
+            lambda row: 'No Internet' if row['internet_service'] == 'No' else row['internet_type'], # English label
+            axis=1
+        )
+        # Churn Reason
+        df['churn_reason'] = df.get('churn_reason', 'Unknown').fillna('Unknown').astype(str)
+        # Contract
+        df['contract'] = df.get('contract', 'Unknown').fillna('Unknown').astype(str)
+        print("DEBUG: Basic data prep finished.")
 
-        if 'total_revenue' not in df.columns and 'total_charges' in df.columns:
-             df['total_revenue'] = pd.to_numeric(df['total_charges'], errors='coerce').fillna(0)
-        elif 'total_revenue' in df.columns:
-              df['total_revenue'] = pd.to_numeric(df['total_revenue'], errors='coerce').fillna(0)
-        else:
-             df['total_revenue'] = 0
-
-        df['tenure'] = pd.to_numeric(df['tenure'], errors='coerce').fillna(0)
-
-        # --- KPI Calculations (same as before) ---
+        # --- KPI Calculations ---
+        print("DEBUG: Calculating KPIs...")
         total_customers = len(df)
+        if total_customers == 0: raise ValueError("Dataset is empty after loading.")
         churned_customers = int(df['churn_value'].sum())
         stayed_customers = total_customers - churned_customers
         churn_rate = (churned_customers / total_customers * 100) if total_customers > 0 else 0
         avg_tenure = df['tenure'].mean() if total_customers > 0 else 0
         total_revenue = df['total_revenue'].sum()
-
         context['kpi_data'] = {
-            'total_customers': total_customers,
-            'churn_rate': churn_rate,
-            'avg_tenure': avg_tenure,
-            'total_revenue': total_revenue,
-            'churned_customers': churned_customers # Keep this, needed below
+            'total_customers': total_customers, 'churn_rate': churn_rate, 'avg_tenure': avg_tenure,
+            'total_revenue': total_revenue, 'churned_customers': churned_customers
         }
+        print(f"DEBUG: KPIs calculated: {context['kpi_data']}")
 
-        # --- Chart Data Preparation (same as before) ---
-        # 1. Churn vs. Stayed (Pie Chart)
+        # --- Chart Data Preparation ---
+        print("DEBUG: Preparing chart data...")
+        # 1. Pie Chart
         churn_pie_series = [stayed_customers, churned_customers]
-        churn_pie_labels = ['Stayed', 'Churned']
+        churn_pie_labels = ['Stayed', 'Churned'] # English Labels
         context['churn_pie_data'] = json.dumps({'series': churn_pie_series, 'labels': churn_pie_labels})
 
-        # 2. Average Tenure (Bar Chart)
+        # 2. Tenure Bar Chart
         avg_tenure_stayed = df[df['churn_value'] == 0]['tenure'].mean() if stayed_customers > 0 else 0
         avg_tenure_churned = df[df['churn_value'] == 1]['tenure'].mean() if churned_customers > 0 else 0
-        tenure_churn_series = [{'name': 'Average Tenure (Months)', 'data': [round(avg_tenure_stayed, 1), round(avg_tenure_churned, 1)]}]
-        tenure_churn_categories = ['Stayed', 'Churned']
+        tenure_churn_series = [{'name': 'Avg. Tenure (Months)', 'data': [round(avg_tenure_stayed, 1), round(avg_tenure_churned, 1)]}] # English Name
+        tenure_churn_categories = ['Stayed', 'Churned'] # English Labels
         context['tenure_churn_data'] = json.dumps({'series': tenure_churn_series, 'categories': tenure_churn_categories})
 
-        # 3. Churn by Contract Type (Bar Chart)
+        # 3. Contract Bar Chart
         if 'contract' in df.columns:
-            contract_churn = df.groupby(['contract', 'churn_value']).size().unstack(fill_value=0)
-            contract_churn.columns = ['Stayed', 'Churned']
-            contract_churn_categories = contract_churn.index.tolist()
-            contract_churn_series = [
-                {'name': 'Stayed', 'data': contract_churn['Stayed'].tolist()},
-                {'name': 'Churned', 'data': contract_churn['Churned'].tolist()}
-            ]
-            context['contract_churn_data'] = json.dumps({'series': contract_churn_series, 'categories': contract_churn_categories})
-        else:
-            context['contract_churn_data'] = None
+            try:
+                contract_churn = df.groupby(['contract', 'churn_value']).size().unstack(fill_value=0)
+                contract_churn = contract_churn.rename(columns={0: 'Stayed', 1: 'Churned'}) # English Labels
+                contract_churn_categories = contract_churn.index.astype(str).tolist()
+                contract_churn_series = []
+                if 'Stayed' in contract_churn.columns: contract_churn_series.append({'name': 'Stayed', 'data': contract_churn['Stayed'].tolist()}) # English Name
+                if 'Churned' in contract_churn.columns: contract_churn_series.append({'name': 'Churned', 'data': contract_churn['Churned'].tolist()}) # English Name
+                context['contract_churn_data'] = json.dumps({'series': contract_churn_series, 'categories': contract_churn_categories})
+                print("DEBUG: Contract churn data prepared.")
+            except Exception as contract_err: print(f"ERROR: Failed to process contract churn data: {contract_err}"); context['contract_churn_data'] = None
+        else: print("WARNING: 'contract' column not found."); context['contract_churn_data'] = None
 
-        # --- Churn Reason Breakdown (Table Data) ---
-        # **** MODIFICATION START ****
-        reason_list = [] # Initialize empty list
-        if 'churn_reason' in df.columns and churned_customers > 0: # Check if column exists AND there are churned customers
-             reason_counts = df[df['churn_value'] == 1]['churn_reason'].fillna('Unknown').astype(str)
-             reason_counts = reason_counts[~reason_counts.str.contains("Not Applicable", na=False, case=False)]
-             reason_counts = reason_counts.value_counts().reset_index()
-             reason_counts.columns = ['reason', 'count']
+        # 4. Tenure Group Churn Rate
+        try:
+            tenure_bins = [-1, 12, 24, 36, 48, 60, np.inf]
+            tenure_labels = ['0-12 Mos', '13-24 Mos', '25-36 Mos', '37-48 Mos', '49-60 Mos', '61+ Mos'] # English Labels
+            df['tenure_group'] = pd.cut(df['tenure'], bins=tenure_bins, labels=tenure_labels, right=True)
+            tenure_churn_rate = df.groupby('tenure_group', observed=False)['churn_value'].mean() * 100
+            tenure_group_categories = tenure_churn_rate.index.astype(str).tolist()
+            tenure_group_series = [{'name': 'Churn Rate (%)', 'data': tenure_churn_rate.round(1).tolist()}] # English Name
+            context['tenure_group_churn_data'] = json.dumps({'series': tenure_group_series, 'categories': tenure_group_categories})
+            print("DEBUG: Tenure group churn data prepared.")
+        except Exception as e: print(f"ERROR: Failed processing tenure group churn: {e}"); context['tenure_group_churn_data'] = None
 
-             # Calculate percentage for each reason and add it to the dictionary
-             for record in reason_counts.to_dict('records'):
-                 record['percentage'] = (record['count'] * 100.0) / churned_customers
-                 reason_list.append(record)
+        # 5. Monthly Charges Distribution
+        try:
+            max_charge = df['monthly_charges'].max()
+            charge_bins = np.linspace(0, max_charge + 1, 11)
+            charge_labels = [f"${int(charge_bins[i])}-${int(charge_bins[i+1]-1)}" for i in range(len(charge_bins)-1)]
+            df['charge_group'] = pd.cut(df['monthly_charges'], bins=charge_bins, labels=charge_labels, right=False, include_lowest=True)
+            charge_counts = df['charge_group'].value_counts().sort_index()
+            monthly_charges_categories = charge_counts.index.astype(str).tolist()
+            monthly_charges_series = [{'name': 'Customer Count', 'data': charge_counts.tolist()}] # English Name
+            context['monthly_charges_hist_data'] = json.dumps({'series': monthly_charges_series, 'categories': monthly_charges_categories})
+            print("DEBUG: Monthly charges distribution data prepared.")
+        except Exception as e: print(f"ERROR: Failed processing monthly charges distribution: {e}"); context['monthly_charges_hist_data'] = None
 
-        elif 'churn_reason' not in df.columns:
-             print("Warning: 'churn_reason' column not found in data.") # Optional: Log a warning
-             # reason_list remains empty
+        # 6. Internet Type Churn Counts
+        try:
+            # Ensure 'internet_category' uses English label 'No Internet' if needed
+            # df['internet_category'] = df['internet_category'].replace({'Không có Internet': 'No Internet'}) # Already done in prep
+            internet_churn_counts = df.groupby(['internet_category', 'churn_value'], observed=False).size().unstack(fill_value=0)
+            internet_churn_counts = internet_churn_counts.rename(columns={0: 'Stayed', 1: 'Churned'}) # English Labels
+            internet_categories = internet_churn_counts.index.astype(str).tolist()
+            internet_series = []
+            if 'Stayed' in internet_churn_counts.columns: internet_series.append({'name': 'Stayed', 'data': internet_churn_counts['Stayed'].tolist()}) # English Name
+            if 'Churned' in internet_churn_counts.columns: internet_series.append({'name': 'Churned', 'data': internet_churn_counts['Churned'].tolist()}) # English Name
+            context['internet_type_churn_data'] = json.dumps({'series': internet_series, 'categories': internet_categories})
+            print("DEBUG: Internet type churn data prepared.")
+        except Exception as e: print(f"ERROR: Failed processing internet type churn: {e}"); context['internet_type_churn_data'] = None
 
-        context['reason_table_data'] = reason_list # Assign the processed list
-        # **** MODIFICATION END ****
+        print("DEBUG: Chart data preparation finished.")
 
+        # --- Churn Reason Breakdown ---
+        print("DEBUG: Preparing churn reason data...")
+        reason_list = []
+        if 'churn_reason' in df.columns and churned_customers > 0:
+             try:
+                 reason_counts_series = df[df['churn_value'] == 1]['churn_reason'].fillna('Unknown').astype(str)
+                 reason_counts_series = reason_counts_series[~reason_counts_series.str.contains("Not Applicable", na=False, case=False)]
+                 MAX_REASONS = 15
+                 reason_counts = reason_counts_series.value_counts().nlargest(MAX_REASONS).reset_index()
+                 reason_counts.columns = ['reason', 'count']
+                 for record in reason_counts.to_dict('records'):
+                     record['percentage'] = (record['count'] * 100.0) / churned_customers
+                     reason_list.append(record)
+                 print(f"DEBUG: Prepared {len(reason_list)} churn reasons.")
+             except Exception as reason_err: print(f"ERROR: Failed processing churn reasons: {reason_err}")
+        elif 'churn_reason' not in df.columns: print("Warning: 'churn_reason' column not found.")
+        elif churned_customers == 0: print("DEBUG: No churned customers, skipping reason breakdown.")
+        context['reason_table_data'] = reason_list
+        print("DEBUG: Churn reason data preparation finished.")
 
-    except FileNotFoundError as e:
-        context['error'] = str(e)
-    except KeyError as e:
-        context['error'] = f"Missing expected column in CSV: {e}. Please check your data file."
-        print(traceback.format_exc()) # Print traceback for key errors
-    except Exception as e:
-        context['error'] = f"An error occurred: {str(e)}"
-        print(traceback.format_exc()) # Print full traceback for debugging
+        # --- Map Marker Data Preparation (Removed) ---
+        context['map_marker_data'] = None # Ensure it's None
+
+    except FileNotFoundError as e: context['error'] = str(e); print(f"ERROR: {str(e)}")
+    except KeyError as e: context['error'] = f"Missing expected column in CSV: {e}."; print(f"ERROR: {context['error']}\n{traceback.format_exc()}")
+    except ValueError as e: context['error'] = f"Data processing error: {e}"; print(f"ERROR: {context['error']}")
+    except Exception as e: context['error'] = f"An unexpected error occurred during dashboard processing: {str(e)}"; print(f"ERROR: {context['error']}\n{traceback.format_exc()}")
 
     return render(request, 'churn_app/dashboard.html', context)
